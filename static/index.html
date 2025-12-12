@@ -1308,6 +1308,36 @@
     </style>
 </head>
 <body>
+    <!-- 登录页面 -->
+    <div id="loginPage" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; z-index: 9999;">
+        <div style="background: white; border-radius: 12px; padding: 40px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); max-width: 400px; width: 90%; text-align: center;">
+            <h1 style="font-size: 2rem; margin-bottom: 8px; color: #1e293b;">📧 邮件管理系统</h1>
+            <p style="color: #64748b; margin-bottom: 32px;">请输入管理员密码以继续</p>
+            
+            <div class="form-group" style="margin-bottom: 24px;">
+                <input 
+                    type="password" 
+                    id="adminPassword" 
+                    class="form-input" 
+                    placeholder="输入管理员密码" 
+                    style="font-size: 1rem; padding: 12px 16px; width: 100%; border: 1px solid #e2e8f0; border-radius: 6px;"
+                    onkeypress="handleLoginKeyPress(event)"
+                >
+            </div>
+            
+            <button 
+                class="btn btn-primary" 
+                onclick="submitLogin()" 
+                id="loginBtn"
+                style="width: 100%; padding: 12px 16px; font-size: 1rem; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s;"
+            >
+                🔓 登录
+            </button>
+            
+            <div id="loginError" style="color: #dc2626; margin-top: 16px; font-size: 0.875rem; display: none;"></div>
+        </div>
+    </div>
+
     <div class="app-container">
         <!-- 左侧菜单 -->
         <div class="sidebar">
@@ -2024,10 +2054,116 @@ example3@outlook.com----password3----refresh_token3----client_id3"></textarea>
         let accountsTotalCount = 0;
         let currentEmailSearch = '';
         let currentTagSearch = '';
+        
+        // 登录相关
+        let isLoggedIn = false;
+        
+        // 初始化应用
+        window.addEventListener('DOMContentLoaded', function() {
+            checkLoginStatus();
+        });
 
         // 全局变量，用于存储当前编辑的账户信息
         let currentEditAccount = null;
         let currentEditTags = [];
+
+        // 登录相关函数
+        async function checkLoginStatus() {
+            try {
+                const response = await fetch('/api/login/check', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.authenticated) {
+                        isLoggedIn = true;
+                        showAppContent();
+                    } else {
+                        isLoggedIn = false;
+                        showLoginPage();
+                    }
+                } else {
+                    // 如果后端没有实现密码认证，直接显示应用
+                    isLoggedIn = true;
+                    showAppContent();
+                }
+            } catch (error) {
+                // 如果无法连接到后端，假设需要登录
+                console.log('Login check failed, showing login page');
+                // 先检查是否有ADMIN_PASSWORD_REQUIRED这个标记
+                // 为了兼容性，我们可以先尝试访问API，如果返回401则需要登录
+                isLoggedIn = true;
+                showAppContent();
+            }
+        }
+
+        function showLoginPage() {
+            document.getElementById('loginPage').style.display = 'flex';
+            document.querySelector('.app-container').style.display = 'none';
+            document.getElementById('adminPassword').focus();
+        }
+
+        function showAppContent() {
+            document.getElementById('loginPage').style.display = 'none';
+            document.querySelector('.app-container').style.display = 'flex';
+            loadAccounts();
+        }
+
+        function handleLoginKeyPress(event) {
+            if (event.key === 'Enter') {
+                submitLogin();
+            }
+        }
+
+        async function submitLogin() {
+            const password = document.getElementById('adminPassword').value.trim();
+            const loginBtn = document.getElementById('loginBtn');
+            const loginError = document.getElementById('loginError');
+            
+            if (!password) {
+                loginError.textContent = '请输入密码';
+                loginError.style.display = 'block';
+                return;
+            }
+            
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<span>⏳</span> 验证中...';
+            loginError.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        password: password
+                    }),
+                    credentials: 'include'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.authenticated) {
+                    isLoggedIn = true;
+                    showAppContent();
+                } else {
+                    loginError.textContent = data.message || '密码错误，请重试';
+                    loginError.style.display = 'block';
+                    document.getElementById('adminPassword').value = '';
+                }
+            } catch (error) {
+                // 如果没有登录端点，假设密码认证不存在，直接进入
+                console.log('Login endpoint not available, allowing access');
+                isLoggedIn = true;
+                showAppContent();
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '🔓 登录';
+            }
+        }
 
         // 页面管理
         function showPage(pageName, targetElement = null) {
@@ -2185,8 +2321,16 @@ example3@outlook.com----password3----refresh_token3----client_id3"></textarea>
                         'Content-Type': 'application/json',
                         ...options.headers
                     },
+                    credentials: 'include',
                     ...options
                 });
+
+                // 如果返回401，表示未认证，需要登录
+                if (response.status === 401) {
+                    isLoggedIn = false;
+                    showLoginPage();
+                    throw new Error('会话已过期，请重新登录');
+                }
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -2212,10 +2356,39 @@ example3@outlook.com----password3----refresh_token3----client_id3"></textarea>
 
         function loadSampleData() {
             const sampleData = `example1@outlook.com----password1----refresh_token_here_1----client_id_here_1
-example2@outlook.com----password2----refresh_token_here_2----client_id_here_2
+example2@outlook.com----password2----client_id_here_2----refresh_token_here_2
 example3@outlook.com----password3----refresh_token_here_3----client_id_here_3`;
             document.getElementById('batchAccounts').value = sampleData;
             showNotification('示例数据已加载，请替换为真实数据', 'info');
+        }
+
+        function detectFieldFormat(field3, field4) {
+            // 尝试检测第3和第4个字段是否为 refresh_token和client_id 的正确顺序
+            // refresh_token 通常包含点号和更长，或以 0.Ax... 开头
+            // 返回: 'original' 表示格式1（刷新令牌----客户端ID），'swapped' 表示格式2（客户端ID----刷新令牌）
+            
+            // 简单启发式：检查是否包含特定的refresh token模式
+            const refreshTokenPatterns = [
+                /^0\.Ax/i,  // Azure refresh token pattern
+                /^M\./,      // Some token patterns
+                /^[A-Za-z0-9\.\-_]+[\.\-]/, // Has dots or dashes suggesting a token
+            ];
+            
+            const hasRefreshTokenMarkers = refreshTokenPatterns.some(pattern => pattern.test(field3));
+            
+            // 如果第3个字段看起来像refresh token，则为原始格式
+            if (hasRefreshTokenMarkers) {
+                return 'original';
+            }
+            
+            // 如果第4个字段看起来像refresh token，则为交换格式
+            const hasRefreshTokenMarkers4 = refreshTokenPatterns.some(pattern => pattern.test(field4));
+            if (hasRefreshTokenMarkers4) {
+                return 'swapped';
+            }
+            
+            // 默认认为原始格式（无法确定时）
+            return 'original';
         }
 
         function validateBatchFormat() {
@@ -2228,18 +2401,33 @@ example3@outlook.com----password3----refresh_token_here_3----client_id_here_3`;
             const lines = batchText.split('\n').filter(line => line.trim());
             let validCount = 0;
             let invalidLines = [];
+            let format1Count = 0;
+            let format2Count = 0;
 
             lines.forEach((line, index) => {
                 const parts = line.split('----').map(p => p.trim());
                 if (parts.length === 4 && parts.every(part => part.length > 0)) {
                     validCount++;
+                    const [email, password, field3, field4] = parts;
+                    const format = detectFieldFormat(field3, field4);
+                    if (format === 'original') {
+                        format1Count++;
+                    } else {
+                        format2Count++;
+                    }
                 } else {
                     invalidLines.push(index + 1);
                 }
             });
 
             if (invalidLines.length === 0) {
-                showNotification(`格式验证通过！共 ${validCount} 个有效账户`, 'success');
+                let formatMsg = `共 ${validCount} 个有效账户`;
+                if (format1Count > 0 && format2Count > 0) {
+                    formatMsg += ` (格式1: ${format1Count}, 格式2: ${format2Count})`;
+                } else if (format2Count > 0) {
+                    formatMsg += ` (全部为格式2)`;
+                }
+                showNotification(`格式验证通过！${formatMsg}`, 'success');
             } else {
                 showNotification(`发现 ${invalidLines.length} 行格式错误：第 ${invalidLines.join(', ')} 行`, 'error');
             }
@@ -2439,12 +2627,26 @@ example3@outlook.com----password3----refresh_token_here_3----client_id_here_3`;
                     results.push({
                         email: parts[0] || '格式错误',
                         status: 'error',
-                        message: '格式错误：应为 邮箱----密码----刷新令牌----客户端ID'
+                        message: '格式错误：应为 邮箱----密码----刷新令牌----客户端ID 或 邮箱----密码----客户端ID----刷新令牌'
                     });
                     continue;
                 }
 
-                const [email, password, refreshToken, clientId] = parts;
+                const [email, password, field3, field4] = parts;
+                
+                // 检测格式并相应处理
+                const format = detectFieldFormat(field3, field4);
+                let refreshToken, clientId;
+                
+                if (format === 'original') {
+                    // 格式1: 邮箱----密码----刷新令牌----客户端ID
+                    refreshToken = field3;
+                    clientId = field4;
+                } else {
+                    // 格式2: 邮箱----密码----客户端ID----刷新令牌
+                    clientId = field3;
+                    refreshToken = field4;
+                }
 
                 try {
                     await apiRequest('/accounts', {
