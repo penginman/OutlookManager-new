@@ -13,12 +13,13 @@ import email
 import imaplib
 import json
 import logging
+import os
 import re
 import socket
 import threading
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from itertools import groupby
 from pathlib import Path
 from queue import Empty, Queue
@@ -27,7 +28,7 @@ from typing import AsyncGenerator, List, Optional
 import httpx
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -57,6 +58,11 @@ SOCKET_TIMEOUT = 15
 
 # 缓存配置
 CACHE_EXPIRE_TIME = 60  # 缓存过期时间（秒）
+
+# 管理员密码认证配置
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', None)
+SESSION_TIMEOUT = 24 * 60 * 60  # 24小时
+SESSIONS = {}  # {session_id: {password_verified: bool, timestamp: datetime}}
 
 # 日志配置
 logging.basicConfig(
@@ -169,6 +175,18 @@ class AccountListResponse(BaseModel):
 class UpdateTagsRequest(BaseModel):
     """更新标签请求模型"""
     tags: List[str]
+
+
+class LoginRequest(BaseModel):
+    """登录请求模型"""
+    password: str
+
+
+class LoginResponse(BaseModel):
+    """登录响应模型"""
+    authenticated: bool
+    message: Optional[str] = None
+    session_id: Optional[str] = None
 
 # ============================================================================
 # IMAP连接池管理
@@ -428,6 +446,62 @@ def clear_email_cache(email: str = None) -> None:
         email_cache.clear()
         email_count_cache.clear()
         logger.info(f"Cleared all email cache ({cache_count} entries)")
+
+# ============================================================================
+# 认证相关函数
+# ============================================================================
+
+import secrets
+from urllib.parse import parse_qs
+
+def generate_session_id() -> str:
+    """生成会话ID"""
+    return secrets.token_urlsafe(32)
+
+def create_session(password: str) -> Optional[str]:
+    """创建会话（如果密码正确）"""
+    if ADMIN_PASSWORD is None:
+        # 如果没有设置密码，不需要认证
+        return "no_auth_required"
+    
+    if password == ADMIN_PASSWORD:
+        session_id = generate_session_id()
+        SESSIONS[session_id] = {
+            'verified': True,
+            'timestamp': datetime.now()
+        }
+        logger.info(f"New session created: {session_id}")
+        return session_id
+    
+    return None
+
+def verify_session(session_id: str) -> bool:
+    """验证会话是否有效"""
+    if ADMIN_PASSWORD is None:
+        # 如果没有设置密码，不需要认证
+        return True
+    
+    if session_id == "no_auth_required":
+        return True
+    
+    if session_id not in SESSIONS:
+        return False
+    
+    session = SESSIONS[session_id]
+    
+    # 检查会话是否已过期
+    if datetime.now() - session['timestamp'] > timedelta(seconds=SESSION_TIMEOUT):
+        del SESSIONS[session_id]
+        return False
+    
+    # 更新时间戳
+    session['timestamp'] = datetime.now()
+    return True
+
+def extract_session_id(request: Request) -> Optional[str]:
+    """从请求中提取会话ID"""
+    cookies = request.cookies
+    return cookies.get('session_id', None)
 
 # ============================================================================
 # 邮件处理辅助函数
@@ -1052,6 +1126,72 @@ app.add_middleware(
 
 # 挂载静态文件服务
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# ============================================================================
+# 认证API端点
+# ============================================================================
+
+@app.post("/api/login", response_model=LoginResponse)
+async def login(request: LoginRequest, response_class=None):
+    """处理登录请求"""
+    session_id = create_session(request.password)
+    
+    if session_id:
+        # 登录成功，返回session_id作为cookie
+        from fastapi.responses import JSONResponse
+        resp = JSONResponse({
+            "authenticated": True,
+            "message": "Login successful",
+            "session_id": session_id
+        })
+        resp.set_cookie(
+            key="session_id",
+            value=session_id,
+            max_age=SESSION_TIMEOUT,
+            httponly=True,
+            samesite="lax"
+        )
+        return resp
+    else:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid password"
+        )
+
+@app.get("/api/login/check")
+async def check_login_status(request: Request):
+    """检查登录状态"""
+    session_id = extract_session_id(request)
+    
+    if ADMIN_PASSWORD is None:
+        # 如果没有设置密码，不需要认证
+        return {"authenticated": True, "message": "No authentication required"}
+    
+    if session_id and verify_session(session_id):
+        return {"authenticated": True, "message": "Session valid"}
+    else:
+        return {"authenticated": False, "message": "Not authenticated"}
+
+# ============================================================================
+# 认证中间件 - 可选的端点认证检查
+# ============================================================================
+
+def require_auth(func):
+    """装饰器：要求认证"""
+    async def wrapper(request: Request, *args, **kwargs):
+        if ADMIN_PASSWORD is None:
+            # 如果没有设置密码，跳过认证
+            return await func(request, *args, **kwargs)
+        
+        session_id = extract_session_id(request)
+        if not session_id or not verify_session(session_id):
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required"
+            )
+        return await func(request, *args, **kwargs)
+    
+    return wrapper
 
 @app.get("/accounts", response_model=AccountListResponse)
 async def get_accounts(
