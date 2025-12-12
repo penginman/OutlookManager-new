@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+  watch:
+    types: [ "started" ]
 
 jobs:
   docker_publish:
