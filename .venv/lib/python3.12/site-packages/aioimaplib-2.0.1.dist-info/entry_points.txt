@@ -1,0 +1,3 @@
+[console_scripts]
+imap-testing-server=aioimaplib.imap_testing_server:main
+
