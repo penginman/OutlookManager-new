@@ -1539,18 +1539,56 @@
                         </div>
 
                         <div style="max-width: 800px;">
+                            <!-- 格式选择 -->
+                            <div class="form-group">
+                                <label class="form-label">选择数据格式</label>
+                                <div style="background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 16px;">
+                                    <div style="margin-bottom: 12px;">
+                                        <label style="display: flex; align-items: center; margin-bottom: 8px; cursor: pointer;">
+                                            <input type="radio" name="batchFormat" value="format1" checked style="margin-right: 8px;">
+                                            <span style="font-weight: 500; color: #374151;">格式1：邮箱----密码----刷新令牌----客户端ID</span>
+                                        </label>
+                                        <p style="margin: 0 0 0 24px; font-size: 0.75rem; color: #6b7280;">
+                                            传统的Outlook账户格式，密码字段在此格式中会传递给后端
+                                        </p>
+                                    </div>
+                                    <div style="margin-bottom: 12px;">
+                                        <label style="display: flex; align-items: center; cursor: pointer;">
+                                            <input type="radio" name="batchFormat" value="format2" style="margin-right: 8px;">
+                                            <span style="font-weight: 500; color: #374151;">格式2：邮箱----密码----客户端ID----刷新令牌</span>
+                                        </label>
+                                        <p style="margin: 0 0 0 24px; font-size: 0.75rem; color: #6b7280;">
+                                            新格式，客户端ID和刷新令牌位置交换，便于记忆和输入
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button class="btn btn-secondary btn-sm" onclick="showFormatInfo('format1')">
+                                        <span>📖</span>
+                                        格式1说明
+                                    </button>
+                                    <button class="btn btn-secondary btn-sm" onclick="showFormatInfo('format2')">
+                                        <span>📖</span>
+                                        格式2说明
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 当前选择的格式说明 -->
+                            <div id="currentFormatInfo" class="form-group" style="background: #eff6ff; padding: 12px; border-radius: 6px; border: 1px solid #bfdbfe; margin-bottom: 16px;">
+                                <h4 style="margin: 0 0 8px 0; font-size: 0.875rem; font-weight: 600; color: #1e40af;">📋 当前格式说明</h4>
+                                <p style="margin: 0; font-size: 0.75rem; color: #1e40af;">
+                                    当前选择格式1：<code>邮箱----密码----刷新令牌----客户端ID</code>
+                                </p>
+                            </div>
+
                             <div class="form-group">
                                 <label class="form-label">批量账户信息</label>
                                 <p class="text-sm" style="color: #64748b; margin-bottom: 8px;">
-                                    每行格式：<code>邮箱----密码----刷新令牌----客户端ID</code>
-                                </p>
-                                <p class="text-sm" style="color: #64748b; margin-bottom: 12px;">
                                     📧 推荐购买地址（非广告，只是推荐）：
                                     <a target="_blank" href="http://wmemail.com" style="color: #3b82f6; margin: 0 8px;">wmemail.com</a>
                                 </p>
-                                <textarea id="batchAccounts" class="form-input form-textarea" rows="12" placeholder="example1@outlook.com----password1----refresh_token1----client_id1
-example2@outlook.com----password2----refresh_token2----client_id2
-example3@outlook.com----password3----refresh_token3----client_id3"></textarea>
+                                <textarea id="batchAccounts" class="form-input form-textarea" rows="12" placeholder="请根据上方选择的格式输入账户信息..."></textarea>
                                 <p class="text-xs" style="color: #64748b; margin-top: 8px;">
                                     💡 提示：每行一个账户，使用四个连字符(----)分隔字段
                                 </p>
@@ -1560,10 +1598,10 @@ example3@outlook.com----password3----refresh_token3----client_id3"></textarea>
                                 <div style="background: #fef3c7; padding: 16px; border-radius: 8px; border: 1px solid #fbbf24;">
                                     <h4 style="margin: 0 0 8px 0; font-size: 0.875rem; font-weight: 600; color: #92400e;">⚠️ 注意事项：</h4>
                                     <ul style="margin: 0; padding-left: 20px; font-size: 0.75rem; color: #92400e; line-height: 1.5;">
-                                        <li>确保所有账户信息格式正确</li>
-                                        <li>建议先测试少量账户再批量添加</li>
+                                        <li>选择正确的格式后再输入数据</li>
+                                        <li>建议先验证格式后再开始添加</li>
                                         <li>添加过程中请勿关闭页面</li>
-                                        <li>失败的账户会在结果中显示</li>
+                                        <li>失败的账户会在结果中显示详细错误</li>
                                     </ul>
                                 </div>
                             </div>
@@ -2207,6 +2245,7 @@ example3@outlook.com----password3----refresh_token3----client_id3"></textarea>
             } else if (pageName === 'batchAdd') {
                 clearBatchForm();
                 hideBatchProgress();
+                updateFormatDisplay(); // 更新格式显示
             } else if (pageName === 'apiDocs') {
                 initApiDocs();
             } else if (pageName === 'emails') {
@@ -2352,15 +2391,105 @@ example3@outlook.com----password3----refresh_token3----client_id3"></textarea>
 
         function clearBatchForm() {
             document.getElementById('batchAccounts').value = '';
+            hideBatchProgress();
         }
 
         function loadSampleData() {
-            const sampleData = `example1@outlook.com----password1----refresh_token_here_1----client_id_here_1
-example2@outlook.com----password2----client_id_here_2----refresh_token_here_2
-example3@outlook.com----password3----refresh_token_here_3----client_id_here_3`;
-            document.getElementById('batchAccounts').value = sampleData;
-            showNotification('示例数据已加载，请替换为真实数据', 'info');
+            const format1 = `test1@outlook.com----password1----0.AXoAQwRL5o5Q6...----12345678-1234-1234-1234-123456789012
+test2@outlook.com----password2----0.AXoAQwRL5o5Q7...----87654321-4321-4321-4321-210987654321`;
+
+            const format2 = `user1@outlook.com----pass1----12345678-1234-1234-1234-123456789012----0.AXoAQwRL5o5Q6...
+user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL5o5Q7...`;
+
+            const currentFormat = document.querySelector('input[name="batchFormat"]:checked')?.value || 'format1';
+            
+            if (currentFormat === 'format1') {
+                document.getElementById('batchAccounts').value = format1;
+                showNotification('已加载格式1示例数据（邮箱----密码----刷新令牌----客户端ID）', 'info');
+            } else {
+                document.getElementById('batchAccounts').value = format2;
+                showNotification('已加载格式2示例数据（邮箱----密码----客户端ID----刷新令牌）', 'info');
+            }
         }
+
+        function showFormatInfo(format) {
+            let title, message;
+            
+            if (format === 'format1') {
+                title = '格式1详细说明';
+                message = `
+                    <strong>格式：</strong>邮箱----密码----刷新令牌----客户端ID<br>
+                    <strong>说明：</strong>传统的Outlook账户格式<br>
+                    <strong>字段说明：</strong><br>
+                    • 第1个字段：邮箱地址（如：user@outlook.com）<br>
+                    • 第2个字段：密码（传递给后端进行验证）<br>
+                    • 第3个字段：刷新令牌（refresh_token，通常以0.Ax开头）<br>
+                    • 第4个字段：客户端ID（Azure应用程序的client_id）<br>
+                    <strong>适用场景：</strong>从传统系统导出的数据或使用此格式的工具生成的数据
+                `;
+            } else {
+                title = '格式2详细说明';
+                message = `
+                    <strong>格式：</strong>邮箱----密码----客户端ID----刷新令牌<br>
+                    <strong>说明：</strong>优化的新格式，便于记忆和使用<br>
+                    <strong>字段说明：</strong><br>
+                    • 第1个字段：邮箱地址（如：user@outlook.com）<br>
+                    • 第2个字段：密码（传递给后端进行验证）<br>
+                    • 第3个字段：客户端ID（Azure应用程序的client_id）<br>
+                    • 第4个字段：刷新令牌（refresh_token，通常以0.Ax开头）<br>
+                    <strong>适用场景：</strong>新录入数据或从其他来源转换的数据，更符合逻辑顺序
+                `;
+            }
+
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.style.display = 'flex';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 500px;">
+                    <div class="modal-header">
+                        <h3>${title}</h3>
+                        <button class="modal-close" onclick="this.closest('.modal').remove()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="font-size: 0.875rem; line-height: 1.6; color: #374151;">
+                            ${message}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-primary" onclick="this.closest('.modal').remove()">知道了</button>
+                    </div>
+                </div>
+            `;
+            
+            // 点击背景关闭
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+            
+            document.body.appendChild(modal);
+        }
+
+        function updateFormatDisplay() {
+            const selectedFormat = document.querySelector('input[name="batchFormat"]:checked')?.value || 'format1';
+            const formatInfo = document.getElementById('currentFormatInfo');
+            
+            const formatTexts = {
+                format1: '当前选择格式1：<code>邮箱----密码----刷新令牌----客户端ID</code>',
+                format2: '当前选择格式2：<code>邮箱----密码----客户端ID----刷新令牌</code>'
+            };
+            
+            formatInfo.querySelector('p').innerHTML = formatTexts[selectedFormat];
+        }
+
+        // 监听格式选择的变化
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('input[name="batchFormat"]').forEach(radio => {
+                radio.addEventListener('change', updateFormatDisplay);
+            });
+            updateFormatDisplay();
+        });
 
         function detectFieldFormat(field3, field4) {
             // 尝试检测第3和第4个字段是否为 refresh_token和client_id 的正确顺序
@@ -2605,6 +2734,9 @@ example3@outlook.com----password3----refresh_token_here_3----client_id_here_3`;
                 return;
             }
 
+            // 获取用户选择的格式
+            const selectedFormat = document.querySelector('input[name="batchFormat"]:checked')?.value || 'format1';
+
             // 显示进度
             showBatchProgress();
             const batchBtn = document.getElementById('batchAddBtn');
@@ -2627,18 +2759,17 @@ example3@outlook.com----password3----refresh_token_here_3----client_id_here_3`;
                     results.push({
                         email: parts[0] || '格式错误',
                         status: 'error',
-                        message: '格式错误：应为 邮箱----密码----刷新令牌----客户端ID 或 邮箱----密码----客户端ID----刷新令牌'
+                        message: `字段数量错误：期望4个字段，实际${parts.length}个`
                     });
                     continue;
                 }
 
                 const [email, password, field3, field4] = parts;
                 
-                // 检测格式并相应处理
-                const format = detectFieldFormat(field3, field4);
+                // 根据选择的格式处理字段
                 let refreshToken, clientId;
                 
-                if (format === 'original') {
+                if (selectedFormat === 'format1') {
                     // 格式1: 邮箱----密码----刷新令牌----客户端ID
                     refreshToken = field3;
                     clientId = field4;
@@ -2646,6 +2777,29 @@ example3@outlook.com----password3----refresh_token_here_3----client_id_here_3`;
                     // 格式2: 邮箱----密码----客户端ID----刷新令牌
                     clientId = field3;
                     refreshToken = field4;
+                }
+
+                // 验证必填字段
+                if (!email || !refreshToken || !clientId) {
+                    failCount++;
+                    results.push({
+                        email: email || '未知邮箱',
+                        status: 'error',
+                        message: '必填字段不能为空：邮箱、刷新令牌、客户端ID'
+                    });
+                    continue;
+                }
+
+                // 验证邮箱格式
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email)) {
+                    failCount++;
+                    results.push({
+                        email: email,
+                        status: 'error',
+                        message: '邮箱格式不正确'
+                    });
+                    continue;
                 }
 
                 try {
@@ -2668,7 +2822,7 @@ example3@outlook.com----password3----refresh_token_here_3----client_id_here_3`;
                     results.push({
                         email: email,
                         status: 'error',
-                        message: error.message
+                        message: error.message || '添加失败'
                     });
                 }
 
