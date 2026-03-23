@@ -2352,35 +2352,87 @@
             showNotification(msg, 'info');
         }
 
-        // API请求
-        async function apiRequest(url, options = {}) {
-            try {
-                const response = await fetch(API_BASE + url, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...options.headers
-                    },
-                    credentials: 'include',
-                    ...options
-                });
+	        // API请求
+	        async function apiRequest(url, options = {}) {
+	            try {
+	                const response = await fetch(API_BASE + url, {
+	                    headers: {
+	                        'Content-Type': 'application/json',
+	                        ...options.headers
+	                    },
+	                    credentials: 'include',
+	                    ...options
+	                });
 
-                // 如果返回401，表示未认证，需要登录
-                if (response.status === 401) {
-                    isLoggedIn = false;
-                    showLoginPage();
-                    throw new Error('会话已过期，请重新登录');
-                }
+	                const contentType = response.headers.get('content-type') || '';
+	                const isJson = contentType.includes('application/json');
 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
+	                const safeReadJson = async () => {
+	                    try { return await response.clone().json(); } catch { return null; }
+	                };
 
-                return await response.json();
-            } catch (error) {
-                console.error('API请求失败:', error);
-                throw error;
-            }
-        }
+	                const safeReadText = async () => {
+	                    try { return await response.clone().text(); } catch { return null; }
+	                };
+
+	                // 优先解析 JSON；解析失败再读取文本（用于后端可能未正确设置 content-type 的情况）
+	                const safeReadBody = async () => (await safeReadJson()) ?? (await safeReadText());
+
+	                const extractError = (body) => {
+	                    const detail = body && typeof body === 'object' ? body.detail : null;
+	                    const detailObj = detail && typeof detail === 'object' ? detail : null;
+	                    // 优先使用 detail.error_code（兼容后端把 error_code 放在顶层的情况）
+	                    const errorCode = detailObj?.error_code || body?.error_code || null;
+	                    const message =
+	                        detailObj?.message ||
+	                        (typeof detail === 'string' ? detail : null) ||
+	                        (typeof body?.message === 'string' ? body.message : null) ||
+	                        (typeof body === 'string' ? body : null) ||
+	                        null;
+	                    return { errorCode, message };
+	                };
+
+	                const checkAdminAuthRequired = async () => {
+	                    try {
+	                        const checkResp = await fetch('/api/login/check', { method: 'GET', credentials: 'include' });
+	                        if (!checkResp.ok) return null;
+	                        const data = await checkResp.json();
+	                        return data && data.authenticated === false;
+	                    } catch {
+	                        return null;
+	                    }
+	                };
+
+	                // 401：仅在确认为管理员登录缺失时才跳转登录页；否则按业务错误处理
+	                if (response.status === 401) {
+	                    const body = await safeReadBody();
+	                    const { errorCode, message } = extractError(body);
+
+	                    const adminAuthRequired =
+	                        errorCode === 'ADMIN_AUTH_REQUIRED' ||
+	                        (await checkAdminAuthRequired()) === true;
+
+	                    if (adminAuthRequired) {
+	                        isLoggedIn = false;
+	                        showLoginPage();
+	                        throw new Error('会话已过期，请重新登录');
+	                    }
+
+	                    throw new Error(message || `HTTP ${response.status}: ${response.statusText}`);
+	                }
+
+	                if (!response.ok) {
+	                    const body = await safeReadBody();
+	                    const { message } = extractError(body);
+	                    throw new Error(message || `HTTP ${response.status}: ${response.statusText}`);
+	                }
+
+	                return isJson ? await response.json() : await response.text();
+	            } catch (error) {
+	                console.error('API请求失败:', error);
+	                throw error;
+	            }
+	        }
 
         // 表单管理函数
         function clearAddAccountForm() {

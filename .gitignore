@@ -2,3 +2,7 @@
 __pycache__
 accounts.json
 .DS_Store
+
+.golutra/
+.vscode/
+.venv/

@@ -28,7 +28,7 @@ from typing import AsyncGenerator, List, Optional
 import httpx
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -481,9 +481,6 @@ def verify_session(session_id: str) -> bool:
         # 如果没有设置密码，不需要认证
         return True
     
-    if session_id == "no_auth_required":
-        return True
-    
     if session_id not in SESSIONS:
         return False
     
@@ -810,22 +807,79 @@ async def get_access_token(credentials: AccountCredentials) -> str:
             if not access_token:
                 logger.error(f"No access token in response for {credentials.email}")
                 raise HTTPException(
-                    status_code=401,
-                    detail="Failed to obtain access token from response"
+                    status_code=502,
+                    detail={
+                        "error_code": "OAUTH_UPSTREAM_RESPONSE_INVALID",
+                        "message": "Token endpoint response missing access_token"
+                    }
                 )
 
             logger.info(f"Successfully obtained access token for {credentials.email}")
             return access_token
 
     except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP {e.response.status_code} error getting access token for {credentials.email}: {e}")
-        if e.response.status_code == 400:
-            raise HTTPException(status_code=401, detail="Invalid refresh token or client credentials")
-        else:
-            raise HTTPException(status_code=401, detail="Authentication failed")
+        status_code = e.response.status_code
+        logger.error(f"HTTP {status_code} error getting access token for {credentials.email}: {e}")
+
+        upstream_error = None
+        try:
+            upstream_error = e.response.json()
+        except Exception:
+            upstream_error = None
+
+        if status_code in (400, 401, 403):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_code": "OAUTH_REFRESH_INVALID",
+                    "message": "Invalid refresh_token or client credentials",
+                    "upstream_status": status_code,
+                    "upstream_error": upstream_error
+                }
+            )
+
+        if status_code == 429:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error_code": "OAUTH_RATE_LIMITED",
+                    "message": "Token endpoint rate limited",
+                    "upstream_status": status_code,
+                    "upstream_error": upstream_error
+                }
+            )
+
+        if 500 <= status_code <= 599:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "error_code": "OAUTH_UPSTREAM_5XX",
+                    "message": "Token endpoint returned server error",
+                    "upstream_status": status_code,
+                    "upstream_error": upstream_error
+                }
+            )
+
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error_code": "OAUTH_UPSTREAM_ERROR",
+                "message": "Token endpoint error",
+                "upstream_status": status_code,
+                "upstream_error": upstream_error
+            }
+        )
     except httpx.RequestError as e:
         logger.error(f"Request error getting access token for {credentials.email}: {e}")
-        raise HTTPException(status_code=500, detail="Network error during token acquisition")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error_code": "OAUTH_NETWORK_ERROR",
+                "message": "Network error during token acquisition"
+            }
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Unexpected error getting access token for {credentials.email}: {e}")
         raise HTTPException(status_code=500, detail="Token acquisition failed")
@@ -1176,24 +1230,30 @@ async def check_login_status(request: Request):
 # 认证中间件 - 可选的端点认证检查
 # ============================================================================
 
+def require_authenticated(request: Request) -> None:
+    """依赖：要求管理员已登录（ADMIN_PASSWORD 启用时）"""
+    if ADMIN_PASSWORD is None:
+        return
+
+    session_id = extract_session_id(request)
+    if not session_id or not verify_session(session_id):
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error_code": "ADMIN_AUTH_REQUIRED",
+                "message": "Authentication required"
+            }
+        )
+
 def require_auth(func):
     """装饰器：要求认证"""
     async def wrapper(request: Request, *args, **kwargs):
-        if ADMIN_PASSWORD is None:
-            # 如果没有设置密码，跳过认证
-            return await func(request, *args, **kwargs)
-        
-        session_id = extract_session_id(request)
-        if not session_id or not verify_session(session_id):
-            raise HTTPException(
-                status_code=401,
-                detail="Authentication required"
-            )
+        require_authenticated(request)
         return await func(request, *args, **kwargs)
     
     return wrapper
 
-@app.get("/accounts", response_model=AccountListResponse)
+@app.get("/accounts", response_model=AccountListResponse, dependencies=[Depends(require_authenticated)])
 async def get_accounts(
     page: int = Query(1, ge=1, description="页码，从1开始"),
     page_size: int = Query(10, ge=1, le=100, description="每页数量，范围1-100"),
@@ -1204,7 +1264,7 @@ async def get_accounts(
     return await get_all_accounts(page, page_size, email_search, tag_search)
 
 
-@app.post("/accounts", response_model=AccountResponse)
+@app.post("/accounts", response_model=AccountResponse, dependencies=[Depends(require_authenticated)])
 async def register_account(credentials: AccountCredentials):
     """注册或更新邮箱账户"""
     try:
@@ -1226,7 +1286,7 @@ async def register_account(credentials: AccountCredentials):
         raise HTTPException(status_code=500, detail="Account registration failed")
 
 
-@app.get("/emails/{email_id}", response_model=EmailListResponse)
+@app.get("/emails/{email_id}", response_model=EmailListResponse, dependencies=[Depends(require_authenticated)])
 async def get_emails(
     email_id: str,
     folder: str = Query("all", regex="^(inbox|junk|all)$"),
@@ -1240,7 +1300,7 @@ async def get_emails(
     return await list_emails(credentials, folder, page, page_size, refresh)
 
 
-@app.get("/emails/{email_id}/dual-view")
+@app.get("/emails/{email_id}/dual-view", dependencies=[Depends(require_authenticated)])
 async def get_dual_view_emails(
     email_id: str,
     inbox_page: int = Query(1, ge=1),
@@ -1263,7 +1323,7 @@ async def get_dual_view_emails(
     )
 
 
-@app.put("/accounts/{email_id}/tags", response_model=AccountResponse)
+@app.put("/accounts/{email_id}/tags", response_model=AccountResponse, dependencies=[Depends(require_authenticated)])
 async def update_account_tags(email_id: str, request: UpdateTagsRequest):
     """更新账户标签"""
     try:
@@ -1286,13 +1346,13 @@ async def update_account_tags(email_id: str, request: UpdateTagsRequest):
         logger.error(f"Error updating account tags: {e}")
         raise HTTPException(status_code=500, detail="Failed to update account tags")
 
-@app.get("/emails/{email_id}/{message_id}", response_model=EmailDetailsResponse)
+@app.get("/emails/{email_id}/{message_id}", response_model=EmailDetailsResponse, dependencies=[Depends(require_authenticated)])
 async def get_email_detail(email_id: str, message_id: str):
     """获取邮件详细内容"""
     credentials = await get_account_credentials(email_id)
     return await get_email_details(credentials, message_id)
 
-@app.delete("/accounts/{email_id}", response_model=AccountResponse)
+@app.delete("/accounts/{email_id}", response_model=AccountResponse, dependencies=[Depends(require_authenticated)])
 async def delete_account(email_id: str):
     """删除邮箱账户"""
     try:
@@ -1331,13 +1391,13 @@ async def root():
     """根路径 - 返回前端页面"""
     return FileResponse("static/index.html")
 
-@app.delete("/cache/{email_id}")
+@app.delete("/cache/{email_id}", dependencies=[Depends(require_authenticated)])
 async def clear_cache(email_id: str):
     """清除指定邮箱的缓存"""
     clear_email_cache(email_id)
     return {"message": f"Cache cleared for {email_id}"}
 
-@app.delete("/cache")
+@app.delete("/cache", dependencies=[Depends(require_authenticated)])
 async def clear_all_cache():
     """清除所有缓存"""
     clear_email_cache()
