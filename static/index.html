@@ -275,11 +275,22 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
-        .account-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
+	        .account-info {
+	            display: flex;
+	            align-items: center;
+	            gap: 12px;
+	        }
+
+	        .account-select-wrapper {
+	            display: flex;
+	            align-items: center;
+	        }
+
+	        .account-select {
+	            width: 16px;
+	            height: 16px;
+	            cursor: pointer;
+	        }
 
         .account-avatar {
             width: 40px;
@@ -1422,13 +1433,25 @@
                         </div>
                         
                         <!-- 统计信息 -->
-                        <div id="accountsStats" class="mb-4" style="display: none;">
-                            <div class="flex gap-4 text-sm">
-                                <span>总数：<strong id="totalAccounts">0</strong></span>
-                                <span>当前页：<strong id="currentPage">1</strong></span>
-                                <span>每页：<strong id="pageSize">10</strong></span>
-                            </div>
-                        </div>
+	                        <div id="accountsStats" class="mb-4" style="display: none;">
+	                            <div class="flex gap-4 text-sm">
+	                                <span>总数：<strong id="totalAccounts">0</strong></span>
+	                                <span>当前页：<strong id="currentPage">1</strong></span>
+	                                <span>每页：<strong id="pageSize">10</strong></span>
+	                            </div>
+	                        </div>
+
+	                        <!-- 批量操作 -->
+	                        <div id="accountsBulkActions" class="flex items-center justify-between mb-3" style="display: none;">
+	                            <label class="flex items-center gap-2 text-sm" style="color: #64748b; user-select: none;">
+	                                <input type="checkbox" id="selectAllAccounts" onchange="toggleSelectAllAccounts(this.checked)">
+	                                全选本页
+	                            </label>
+	                            <button class="btn btn-danger btn-sm" id="deleteSelectedBtn" onclick="deleteSelectedAccounts()" disabled>
+	                                <span>🗑️</span>
+	                                删除已选
+	                            </button>
+	                        </div>
 
                         <div id="accountsList" class="account-list">
                             <div class="loading">
@@ -2079,11 +2102,15 @@
 
     <script>
         // 全局变量
-        const API_BASE = '';
-        let currentAccount = null;
-        let currentEmailFolder = 'all';
-        let currentEmailPage = 1;
-        let accounts = [];
+	        const API_BASE = '';
+	        let currentAccount = null;
+	        let currentEmailFolder = 'all';
+	        let currentEmailPage = 1;
+	        let accounts = [];
+	        let currentPageAccountEmails = [];
+	        let selectedAccountEmails = new Set();
+	        let isUpdatingAccountSelection = false;
+	        let isBulkDeletingAccounts = false;
         
         // 账户管理分页相关变量
         let accountsCurrentPage = 1;
@@ -2614,19 +2641,19 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
             }
         }
 
-        async function testAccountConnection() {
-            const email = document.getElementById('email').value.trim();
-            const refreshToken = document.getElementById('refreshToken').value.trim();
-            const clientId = document.getElementById('clientId').value.trim();
+		        async function testAccountConnection() {
+	            const email = document.getElementById('email').value.trim();
+	            const refreshToken = document.getElementById('refreshToken').value.trim();
+	            const clientId = document.getElementById('clientId').value.trim();
 
-            if (!email || !refreshToken || !clientId) {
-                showNotification('请填写所有必需字段', 'warning');
-                return;
-            }
+	            if (!email || !refreshToken || !clientId) {
+	                showNotification('请填写所有必需字段', 'warning');
+	                return;
+		        }
 
-            const testBtn = document.getElementById('testBtn');
-            testBtn.disabled = true;
-            testBtn.innerHTML = '<span>⏳</span> 测试中...';
+	            const testBtn = document.getElementById('testBtn');
+	            testBtn.disabled = true;
+	            testBtn.innerHTML = '<span>⏳</span> 测试中...';
 
             try {
                 // 这里可以调用一个测试接口
@@ -2634,16 +2661,135 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
                 showNotification('连接测试成功！账户配置正确', 'success');
             } catch (error) {
                 showNotification('连接测试失败：' + error.message, 'error');
-            } finally {
-                testBtn.disabled = false;
-                testBtn.innerHTML = '<span>🔍</span> 测试连接';
-            }
-        }
+	            } finally {
+	                testBtn.disabled = false;
+	                testBtn.innerHTML = '<span>🔍</span> 测试连接';
+	            }
+	        }
 
-        async function loadAccounts(page = 1, resetSearch = false) {
-            if (resetSearch) {
-                // 重置搜索条件
-                currentEmailSearch = '';
+	        function setAccountsBulkActionsVisible(visible) {
+	            const bulkActions = document.getElementById('accountsBulkActions');
+	            if (bulkActions) {
+	                bulkActions.style.display = visible ? 'flex' : 'none';
+	            }
+	        }
+
+	        function updateAccountsBulkActionsUI() {
+	            const selectAllCheckbox = document.getElementById('selectAllAccounts');
+	            const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+
+	            const selectedCount = selectedAccountEmails.size;
+	            const totalCount = currentPageAccountEmails.length;
+
+	            if (selectAllCheckbox) {
+	                selectAllCheckbox.checked = totalCount > 0 && selectedCount === totalCount;
+	                selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalCount;
+	            }
+
+	            if (deleteSelectedBtn && !isBulkDeletingAccounts) {
+	                deleteSelectedBtn.disabled = selectedCount === 0;
+	                deleteSelectedBtn.innerHTML = `<span>🗑️</span> 删除已选${selectedCount > 0 ? ` (${selectedCount})` : ''}`;
+	            }
+	        }
+
+	        function clearAccountSelection() {
+	            selectedAccountEmails.clear();
+	            isUpdatingAccountSelection = true;
+	            document.querySelectorAll('#accountsList .account-select').forEach(cb => {
+	                cb.checked = false;
+	            });
+	            isUpdatingAccountSelection = false;
+	            updateAccountsBulkActionsUI();
+	        }
+
+	        function toggleAccountSelection(emailId, checked) {
+	            if (isUpdatingAccountSelection) return;
+	            if (checked) {
+	                selectedAccountEmails.add(emailId);
+	            } else {
+	                selectedAccountEmails.delete(emailId);
+	            }
+	            updateAccountsBulkActionsUI();
+	        }
+
+	        function toggleSelectAllAccounts(checked) {
+	            isUpdatingAccountSelection = true;
+	            selectedAccountEmails.clear();
+
+	            if (checked) {
+	                currentPageAccountEmails.forEach(emailId => selectedAccountEmails.add(emailId));
+	            }
+
+	            document.querySelectorAll('#accountsList .account-select').forEach(cb => {
+	                cb.checked = checked;
+	            });
+
+	            isUpdatingAccountSelection = false;
+	            updateAccountsBulkActionsUI();
+	        }
+
+	        async function deleteSelectedAccounts() {
+	            if (isBulkDeletingAccounts) return;
+
+	            const emailIds = Array.from(selectedAccountEmails);
+	            if (emailIds.length === 0) return;
+
+	            const preview = emailIds.slice(0, 5).join(', ') + (emailIds.length > 5 ? '...' : '');
+	            const confirmed = confirm(`确定要删除已选的 ${emailIds.length} 个账户吗？\\n\\n${preview}`);
+	            if (!confirmed) return;
+
+	            const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+	            const originalBtnHtml = deleteSelectedBtn ? deleteSelectedBtn.innerHTML : '';
+
+	            isBulkDeletingAccounts = true;
+	            if (deleteSelectedBtn) {
+	                deleteSelectedBtn.disabled = true;
+	                deleteSelectedBtn.innerHTML = '<span>⏳</span> 删除中...';
+	            }
+
+	            const failed = [];
+	            let succeeded = 0;
+
+	            for (const emailId of emailIds) {
+	                try {
+	                    await apiRequest(`/accounts/${encodeURIComponent(emailId)}`, { method: 'DELETE' });
+	                    succeeded++;
+	                } catch (error) {
+	                    failed.push({
+	                        emailId,
+	                        message: error?.message || String(error)
+	                    });
+	                }
+	            }
+
+	            selectedAccountEmails.clear();
+	            updateAccountsBulkActionsUI();
+
+	            try {
+	                await loadAccounts(accountsCurrentPage);
+	            } catch {
+	                // 忽略刷新失败，仍然输出删除结果
+	            }
+
+	            if (failed.length === 0) {
+	                showSuccess(`已删除 ${succeeded} 个账户`);
+	            } else {
+	                const failedPreview = failed.slice(0, 3).map(f => `${f.emailId}: ${f.message}`).join('; ');
+	                const more = failed.length > 3 ? `；另有 ${failed.length - 3} 个失败` : '';
+	                showNotification(`删除完成：成功 ${succeeded}，失败 ${failed.length}。失败示例：${failedPreview}${more}`, 'warning', '', 8000);
+	            }
+
+	            isBulkDeletingAccounts = false;
+	            if (deleteSelectedBtn) {
+	                deleteSelectedBtn.innerHTML = originalBtnHtml || '<span>🗑️</span> 删除已选';
+	            }
+	            updateAccountsBulkActionsUI();
+	        }
+
+		        async function loadAccounts(page = 1, resetSearch = false) {
+	            if (resetSearch) {
+	                // 重置搜索条件
+	                currentEmailSearch = '';
                 currentTagSearch = '';
                 document.getElementById('emailSearch').value = '';
                 document.getElementById('tagSearch').value = '';
@@ -2652,13 +2798,16 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
             
             accountsCurrentPage = page;
             
-            const accountsList = document.getElementById('accountsList');
-            const accountsStats = document.getElementById('accountsStats');
-            const accountsPagination = document.getElementById('accountsPagination');
-            
-            accountsList.innerHTML = '<div class="loading">正在加载账户列表...</div>';
-            accountsStats.style.display = 'none';
-            accountsPagination.style.display = 'none';
+	            const accountsList = document.getElementById('accountsList');
+	            const accountsStats = document.getElementById('accountsStats');
+	            const accountsPagination = document.getElementById('accountsPagination');
+	            setAccountsBulkActionsVisible(false);
+	            currentPageAccountEmails = [];
+	            clearAccountSelection();
+	            
+	            accountsList.innerHTML = '<div class="loading">正在加载账户列表...</div>';
+	            accountsStats.style.display = 'none';
+	            accountsPagination.style.display = 'none';
 
             try {
                 // 构建请求参数
@@ -2677,55 +2826,65 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
                 
                 const data = await apiRequest(`/accounts?${params.toString()}`);
                 
-                accounts = data.accounts || [];
-                accountsTotalCount = data.total_accounts || 0;
-                accountsTotalPages = data.total_pages || 0;
+	                accounts = data.accounts || [];
+	                currentPageAccountEmails = accounts.map(a => a.email_id);
+	                accountsTotalCount = data.total_accounts || 0;
+	                accountsTotalPages = data.total_pages || 0;
                 
                 // 更新统计信息
                 updateAccountsStats();
                 
-                if (accounts.length === 0) {
-                    accountsList.innerHTML = '<div class="text-center" style="padding: 40px; color: #64748b;">暂无符合条件的账户</div>';
-                    return;
-                }
+	                if (accounts.length === 0) {
+	                    accountsList.innerHTML = '<div class="text-center" style="padding: 40px; color: #64748b;">暂无符合条件的账户</div>';
+	                    setAccountsBulkActionsVisible(false);
+	                    return;
+	                }
 
-                accountsList.innerHTML = accounts.map(account => {
-                    // 生成标签HTML
-                    const tagsHtml = account.tags && account.tags.length > 0 
-                        ? `<div class="account-tags">${account.tags.map(tag => 
-                            `<span class="account-tag">${tag}</span>`).join('')}</div>` 
-                        : '';
-                        
-                    return `
-                        <div class="account-item" onclick="viewAccountEmails('${account.email_id}')" oncontextmenu="showAccountContextMenu(event, '${account.email_id}')">
-                            <div class="account-info">
-                                <div class="account-avatar">${account.email_id.charAt(0).toUpperCase()}</div>
-                                <div class="account-details">
-                                    <h4>${account.email_id}</h4>
-                                    <p>状态: ${account.status === 'active' ? '正常' : '异常'}</p>
-                                    ${tagsHtml}
-                                </div>
-                            </div>
-                            <div class="account-actions" onclick="event.stopPropagation()">
-                                <button class="btn btn-primary btn-sm" onclick="viewAccountEmails('${account.email_id}')">
-                                    <span>📧</span>
-                                    查看邮件
-                                </button>
-                                <button class="btn btn-secondary btn-sm" onclick="editAccountTags('${account.email_id}', ${JSON.stringify(account.tags || [])})">
-                                    <span>🏷️</span>
-                                    管理标签
-                                </button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteAccount('${account.email_id}')">
-                                    <span>🗑️</span>
-                                    删除
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-                
-                // 更新分页控件
-                updateAccountsPagination();
+	                setAccountsBulkActionsVisible(true);
+	                updateAccountsBulkActionsUI();
+
+	                accountsList.innerHTML = accounts.map(account => {
+	                    // 生成标签HTML
+	                    const tagsHtml = account.tags && account.tags.length > 0 
+	                        ? `<div class="account-tags">${account.tags.map(tag => 
+	                            `<span class="account-tag">${tag}</span>`).join('')}</div>` 
+	                        : '';
+	                        
+	                    return `
+	                        <div class="account-item" onclick="viewAccountEmails('${account.email_id}')" oncontextmenu="showAccountContextMenu(event, '${account.email_id}')">
+	                            <div class="account-info">
+	                                <div class="account-select-wrapper" onclick="event.stopPropagation()">
+	                                    <input type="checkbox" class="account-select" data-email="${account.email_id}" onclick="event.stopPropagation()" onchange="toggleAccountSelection('${account.email_id}', this.checked)">
+	                                </div>
+	                                <div class="account-avatar">${account.email_id.charAt(0).toUpperCase()}</div>
+	                                <div class="account-details">
+	                                    <h4>${account.email_id}</h4>
+	                                    <p>状态: ${account.status === 'active' ? '正常' : '异常'}</p>
+	                                    ${tagsHtml}
+	                                </div>
+	                            </div>
+	                            <div class="account-actions" onclick="event.stopPropagation()">
+	                                <button class="btn btn-primary btn-sm" onclick="viewAccountEmails('${account.email_id}')">
+	                                    <span>📧</span>
+	                                    查看邮件
+	                                </button>
+	                                <button class="btn btn-secondary btn-sm" onclick="editAccountTags('${account.email_id}', ${JSON.stringify(account.tags || [])})">
+	                                    <span>🏷️</span>
+	                                    管理标签
+	                                </button>
+	                                <button class="btn btn-danger btn-sm" onclick="deleteAccount('${account.email_id}')">
+	                                    <span>🗑️</span>
+	                                    删除
+	                                </button>
+	                            </div>
+	                        </div>
+	                    `;
+	                }).join('');
+
+	                updateAccountsBulkActionsUI();
+	                
+	                // 更新分页控件
+	                updateAccountsPagination();
 
             } catch (error) {
                 accountsList.innerHTML = '<div class="error">加载失败: ' + error.message + '</div>';
