@@ -2954,6 +2954,15 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 		            return result;
 		        }
 
+		        function escapeHtml(text) {
+		            return String(text ?? '')
+		                .replace(/&/g, '&amp;')
+		                .replace(/</g, '&lt;')
+		                .replace(/>/g, '&gt;')
+		                .replace(/\"/g, '&quot;')
+		                .replace(/'/g, '&#39;');
+		        }
+
 		        function getTagsFromTagsApiResponse(data) {
 		            if (!data) return [];
 		            if (Array.isArray(data)) return data;
@@ -2980,7 +2989,7 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 		        function updateTagSuggestionSources() {
 		            const datalist = document.getElementById('tagSuggestions');
 		            if (datalist) {
-		                datalist.innerHTML = tagLibrary.map(tag => `<option value="${tag}"></option>`).join('');
+		                datalist.innerHTML = tagLibrary.map(tag => `<option value="${escapeHtml(tag)}"></option>`).join('');
 		            }
 
 		            updateAccountExistingTagSelect();
@@ -3001,7 +3010,7 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 		            }
 
 		            select.disabled = false;
-		            select.innerHTML = available.map(tag => `<option value="${tag}">${tag}</option>`).join('');
+		            select.innerHTML = available.map(tag => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`).join('');
 		        }
 
 		        async function openTagLibraryModal() {
@@ -3030,8 +3039,8 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 		            empty.style.display = 'none';
 		            list.innerHTML = tagLibrary.map(tag => `
 		                <div class="tag-item">
-		                    <span class="tag-name">${tag}</span>
-		                    <button class="tag-delete" onclick="deleteTagFromLibrary('${tag}')">×</button>
+		                    <span class="tag-name">${escapeHtml(tag)}</span>
+		                    <button class="tag-delete" onclick="deleteTagFromLibraryEncoded('${encodeURIComponent(tag)}')">×</button>
 		                </div>
 		            `).join('');
 		        }
@@ -3084,6 +3093,10 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 		            } catch (error) {
 		                showError('删除标签失败: ' + error.message);
 		            }
+		        }
+
+		        async function deleteTagFromLibraryEncoded(encodedTag) {
+		            await deleteTagFromLibrary(decodeURIComponent(encodedTag));
 		        }
 
 		        async function addTagIfMissingInLibrary(tag) {
@@ -3139,8 +3152,8 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 		            empty.style.display = 'none';
 		            list.innerHTML = tagLibrary.map(tag => `
 		                <label class="bulk-tag-option">
-		                    <input type="checkbox" ${bulkSelectedTags.has(tag) ? 'checked' : ''} onchange="toggleBulkTagSelection('${tag}', this.checked)">
-		                    <span>${tag}</span>
+		                    <input type="checkbox" ${bulkSelectedTags.has(tag) ? 'checked' : ''} onchange="toggleBulkTagSelectionEncoded('${encodeURIComponent(tag)}', this.checked)">
+		                    <span>${escapeHtml(tag)}</span>
 		                </label>
 		            `).join('');
 		        }
@@ -3151,6 +3164,10 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 		            if (checked) bulkSelectedTags.add(normalized);
 		            else bulkSelectedTags.delete(normalized);
 		            renderBulkSelectedTagsPreview();
+		        }
+
+		        function toggleBulkTagSelectionEncoded(encodedTag, checked) {
+		            toggleBulkTagSelection(decodeURIComponent(encodedTag), checked);
 		        }
 
 		        function renderBulkSelectedTagsPreview() {
@@ -3165,8 +3182,8 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 
 		            container.innerHTML = tags.map(tag => `
 		                <div class="tag-item">
-		                    <span class="tag-name">${tag}</span>
-		                    <button class="tag-delete" onclick="removeBulkSelectedTag('${tag}')">×</button>
+		                    <span class="tag-name">${escapeHtml(tag)}</span>
+		                    <button class="tag-delete" onclick="removeBulkSelectedTagEncoded('${encodeURIComponent(tag)}')">×</button>
 		                </div>
 		            `).join('');
 		        }
@@ -3175,6 +3192,10 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 		            bulkSelectedTags.delete(normalizeTagInput(tag));
 		            renderBulkTagsModalList();
 		            renderBulkSelectedTagsPreview();
+		        }
+
+		        function removeBulkSelectedTagEncoded(encodedTag) {
+		            removeBulkSelectedTag(decodeURIComponent(encodedTag));
 		        }
 
 		        async function addBulkNewTag() {
@@ -3327,7 +3348,7 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 	                    // 生成标签HTML
 	                    const tagsHtml = account.tags && account.tags.length > 0 
 	                        ? `<div class="account-tags">${account.tags.map(tag => 
-	                            `<span class="account-tag">${tag}</span>`).join('')}</div>` 
+	                            `<span class="account-tag">${escapeHtml(tag)}</span>`).join('')}</div>` 
 	                        : '';
 	                        
 	                    return `
@@ -3348,7 +3369,7 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 	                                    <span>📧</span>
 	                                    查看邮件
 	                                </button>
-	                                <button class="btn btn-secondary btn-sm" onclick="editAccountTags('${account.email_id}', ${JSON.stringify(account.tags || [])})">
+	                                <button class="btn btn-secondary btn-sm" onclick="openAccountTagsModal('${account.email_id}')">
 	                                    <span>🏷️</span>
 	                                    管理标签
 	                                </button>
@@ -4221,6 +4242,12 @@ GET /emails/{email_id}/{message_id}
 	            document.getElementById('tagsModal').style.display = 'flex';
 	        }
 
+	        function openAccountTagsModal(emailId) {
+	            const account = accounts.find(acc => acc.email_id === emailId);
+	            const tags = Array.isArray(account?.tags) ? account.tags : [];
+	            editAccountTags(emailId, tags);
+	        }
+
         // 渲染当前标签列表
 	        function renderCurrentTags() {
 	            const tagsList = document.getElementById('currentTagsList');
@@ -4233,8 +4260,8 @@ GET /emails/{email_id}/{message_id}
 	            
 	            tagsList.innerHTML = currentEditTags.map(tag => `
 	                <div class="tag-item">
-	                    <span class="tag-name">${tag}</span>
-	                    <button class="tag-delete" onclick="removeTag('${tag}')">×</button>
+	                    <span class="tag-name">${escapeHtml(tag)}</span>
+	                    <button class="tag-delete" onclick="removeTagEncoded('${encodeURIComponent(tag)}')">×</button>
 	                </div>
 	            `).join('');
 	            updateAccountExistingTagSelect();
@@ -4269,10 +4296,14 @@ GET /emails/{email_id}/{message_id}
 	        }
 
         // 删除标签
-        function removeTag(tag) {
-            currentEditTags = currentEditTags.filter(t => t !== tag);
-            renderCurrentTags();
-        }
+	        function removeTag(tag) {
+	            currentEditTags = currentEditTags.filter(t => t !== tag);
+	            renderCurrentTags();
+	        }
+
+	        function removeTagEncoded(encodedTag) {
+	            removeTag(decodeURIComponent(encodedTag));
+	        }
 
         // 关闭标签管理模态框
 	        function closeTagsModal() {
