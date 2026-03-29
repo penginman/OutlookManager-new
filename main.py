@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from itertools import groupby
 from pathlib import Path
 from queue import Empty, Queue
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator, Dict, List, Optional, Set
 
 import httpx
 from email.header import decode_header
@@ -42,6 +42,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 # 文件路径配置
 ACCOUNTS_FILE = "accounts.json"
+TAGS_FILE = "tags.json"
 
 # OAuth2配置
 TOKEN_URL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
@@ -175,6 +176,10 @@ class AccountListResponse(BaseModel):
 class UpdateTagsRequest(BaseModel):
     """更新标签请求模型"""
     tags: List[str]
+
+class TagCreateRequest(BaseModel):
+    """创建标签请求模型"""
+    tag: str
 
 
 class LoginRequest(BaseModel):
@@ -607,6 +612,164 @@ def extract_email_content(email_message: email.message.EmailMessage) -> tuple[st
 # ============================================================================
 # 账户凭证管理模块
 # ============================================================================
+
+def normalize_tag(raw_tag: str) -> Optional[str]:
+    """规范化单个标签值：去首尾空格、压缩内部空白；空值返回 None"""
+    if raw_tag is None:
+        return None
+
+    tag = re.sub(r"\s+", " ", str(raw_tag).strip())
+    return tag if tag else None
+
+
+def normalize_tags(raw_tags: List[str]) -> List[str]:
+    """规范化标签列表：去空、去重（大小写不敏感）"""
+    normalized: List[str] = []
+    seen: Set[str] = set()
+
+    for raw_tag in raw_tags or []:
+        tag = normalize_tag(raw_tag)
+        if not tag:
+            continue
+
+        key = tag.casefold()
+        if key in seen:
+            continue
+
+        seen.add(key)
+        normalized.append(tag)
+
+    return normalized
+
+
+def sort_tags(tags: List[str]) -> List[str]:
+    """标签排序：大小写不敏感优先，其次按原值"""
+    return sorted(tags, key=lambda t: (t.casefold(), t))
+
+
+def load_tags_from_file() -> List[str]:
+    """从 tags.json 读取标签库（兼容历史 list/dict 结构）"""
+    tags_path = Path(TAGS_FILE)
+    if not tags_path.exists():
+        return []
+
+    try:
+        with open(tags_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        if isinstance(data, list):
+            tags = data
+        elif isinstance(data, dict):
+            tags = data.get('tags', [])
+        else:
+            tags = []
+
+        if not isinstance(tags, list):
+            tags = []
+
+        normalized = normalize_tags([t for t in tags if isinstance(t, str)])
+        return sort_tags(normalized)
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in tags file: {e}")
+        raise HTTPException(status_code=500, detail="Tags file format error")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error reading tags file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to read tags file")
+
+
+def save_tags_to_file(tags: List[str]) -> None:
+    """写入 tags.json（结构：{tags:[...] }）"""
+    try:
+        with open(TAGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump({"tags": sort_tags(normalize_tags(tags))}, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Error saving tags file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save tags file")
+
+
+def upsert_tags_to_library(tags_to_add: List[str]) -> List[str]:
+    """把新标签合并进标签库，返回合并后的全量标签（已排序）"""
+    existing = load_tags_from_file()
+    existing_by_key: Dict[str, str] = {t.casefold(): t for t in existing}
+
+    for tag in normalize_tags(tags_to_add):
+        key = tag.casefold()
+        if key not in existing_by_key:
+            existing_by_key[key] = tag
+
+    merged = sort_tags(list(existing_by_key.values()))
+    save_tags_to_file(merged)
+    return merged
+
+
+def remove_tag_from_library(tag_to_remove: str) -> List[str]:
+    """从标签库移除指定标签（大小写不敏感），返回更新后的标签列表"""
+    tag = normalize_tag(tag_to_remove)
+    if not tag:
+        return load_tags_from_file()
+
+    existing = load_tags_from_file()
+    remove_key = tag.casefold()
+    remaining = [t for t in existing if t.casefold() != remove_key]
+    save_tags_to_file(remaining)
+    return sort_tags(remaining)
+
+
+def remove_tag_from_all_accounts(tag_to_remove: str) -> None:
+    """从 accounts.json 的所有账户 tags 中移除指定标签（大小写不敏感）"""
+    tag = normalize_tag(tag_to_remove)
+    if not tag:
+        return
+
+    accounts_path = Path(ACCOUNTS_FILE)
+    if not accounts_path.exists():
+        return
+
+    try:
+        with open(accounts_path, 'r', encoding='utf-8') as f:
+            accounts = json.load(f) or {}
+
+        if not isinstance(accounts, dict):
+            return
+
+        remove_key = tag.casefold()
+        changed = False
+
+        for _, account_info in accounts.items():
+            if not isinstance(account_info, dict):
+                continue
+
+            raw_tags = account_info.get('tags', [])
+            if not isinstance(raw_tags, list):
+                continue
+
+            cleaned: List[str] = []
+            for raw_tag in raw_tags:
+                if not isinstance(raw_tag, str):
+                    continue
+                normalized_tag = normalize_tag(raw_tag)
+                if not normalized_tag:
+                    continue
+                if normalized_tag.casefold() == remove_key:
+                    continue
+                cleaned.append(raw_tag)
+            if cleaned != raw_tags:
+                account_info['tags'] = cleaned
+                changed = True
+
+        if changed:
+            with open(accounts_path, 'w', encoding='utf-8') as f:
+                json.dump(accounts, f, indent=2, ensure_ascii=False)
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in accounts file while removing tag: {e}")
+        raise HTTPException(status_code=500, detail="Accounts file format error")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error removing tag from accounts: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update accounts tags")
 
 async def get_account_credentials(email_id: str) -> AccountCredentials:
     """
@@ -1286,6 +1449,45 @@ async def register_account(credentials: AccountCredentials):
         raise HTTPException(status_code=500, detail="Account registration failed")
 
 
+@app.get("/tags", dependencies=[Depends(require_authenticated)])
+async def list_tags():
+    """获取全局标签库（已排序）"""
+    return {"tags": load_tags_from_file()}
+
+
+@app.post("/tags", dependencies=[Depends(require_authenticated)])
+async def create_tag(request: TagCreateRequest):
+    """创建标签，返回更新后的标签列表"""
+    tag = normalize_tag(request.tag)
+    if not tag:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error_code": "TAG_INVALID",
+                "message": "Tag cannot be empty"
+            }
+        )
+
+    return {"tags": upsert_tags_to_library([tag])}
+
+
+@app.delete("/tags/{tag}", dependencies=[Depends(require_authenticated)])
+async def delete_tag(tag: str):
+    """删除标签，并从所有账户中移除该标签"""
+    normalized = normalize_tag(tag)
+    if not normalized:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error_code": "TAG_INVALID",
+                "message": "Tag cannot be empty"
+            }
+        )
+
+    remove_tag_from_all_accounts(normalized)
+    return {"tags": remove_tag_from_library(normalized)}
+
+
 @app.get("/emails/{email_id}", response_model=EmailListResponse, dependencies=[Depends(require_authenticated)])
 async def get_emails(
     email_id: str,
@@ -1331,10 +1533,14 @@ async def update_account_tags(email_id: str, request: UpdateTagsRequest):
         credentials = await get_account_credentials(email_id)
         
         # 更新标签
-        credentials.tags = request.tags
+        normalized_tags = normalize_tags(request.tags)
+        credentials.tags = normalized_tags
         
         # 保存更新后的凭证
         await save_account_credentials(email_id, credentials)
+
+        # 同步到全局标签库
+        upsert_tags_to_library(normalized_tags)
         
         return AccountResponse(
             email_id=email_id,

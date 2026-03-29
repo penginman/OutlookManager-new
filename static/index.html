@@ -1198,10 +1198,10 @@
             border-radius: 12px;
         }
 
-        /* 标签管理样式 */
-        /* 修改标签模态框样式 */
-        #tagsModal {
-            display: none;
+	        /* 标签管理样式 */
+	        /* 修改标签模态框样式 */
+	        #tagsModal {
+	            display: none;
             position: fixed;
             top: 0;
             left: 0;
@@ -1253,9 +1253,61 @@
             gap: 8px;
         }
 
-        .input-group .form-control {
-            flex: 1;
-        }
+	        .input-group .form-control {
+	            flex: 1;
+	        }
+
+	        #tagLibraryModal {
+	            display: none;
+	        }
+
+	        #bulkTagsModal {
+	            display: none;
+	        }
+
+	        .tag-suggestion-row {
+	            display: flex;
+	            gap: 8px;
+	            align-items: center;
+	        }
+
+	        .tag-suggestion-row .form-control {
+	            flex: 1;
+	        }
+
+	        .tag-library-empty {
+	            color: #64748b;
+	            font-size: 0.875rem;
+	            padding: 8px 0;
+	        }
+
+	        .bulk-tags-list {
+	            display: grid;
+	            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+	            gap: 8px;
+	            margin-top: 8px;
+	        }
+
+	        .bulk-tag-option {
+	            display: flex;
+	            align-items: center;
+	            gap: 8px;
+	            padding: 8px 10px;
+	            border: 1px solid #e2e8f0;
+	            border-radius: 8px;
+	            background: #f8fafc;
+	            cursor: pointer;
+	            user-select: none;
+	        }
+
+	        .bulk-tag-option:hover {
+	            border-color: #3b82f6;
+	        }
+
+	        .bulk-tag-option input {
+	            width: 16px;
+	            height: 16px;
+	        }
 
         /* 响应式设计 */
         @media (max-width: 768px) {
@@ -1405,13 +1457,17 @@
                                     <span>📦</span>
                                     批量添加
                                 </button>
-                                <button class="btn btn-secondary btn-sm" onclick="loadAccounts()">
-                                    <span>🔄</span>
-                                    刷新列表
-                                </button>
-                            </div>
-                        </div>
-                        
+	                                <button class="btn btn-secondary btn-sm" onclick="loadAccounts()">
+	                                    <span>🔄</span>
+	                                    刷新列表
+	                                </button>
+	                                <button class="btn btn-secondary btn-sm" onclick="openTagLibraryModal()">
+	                                    <span>🏷️</span>
+	                                    标签库
+	                                </button>
+	                            </div>
+	                        </div>
+	                        
                         <!-- 搜索和过滤区域 -->
                         <div class="search-container">
                             <div class="flex gap-3 mb-4">
@@ -1447,10 +1503,16 @@
 	                                <input type="checkbox" id="selectAllAccounts" onchange="toggleSelectAllAccounts(this.checked)">
 	                                全选本页
 	                            </label>
-	                            <button class="btn btn-danger btn-sm" id="deleteSelectedBtn" onclick="deleteSelectedAccounts()" disabled>
-	                                <span>🗑️</span>
-	                                删除已选
-	                            </button>
+	                            <div class="flex items-center gap-2">
+	                                <button class="btn btn-secondary btn-sm" id="bulkAddTagsBtn" onclick="openBulkAddTagsModal()" disabled>
+	                                    <span>🏷️</span>
+	                                    批量加标签
+	                                </button>
+	                                <button class="btn btn-danger btn-sm" id="deleteSelectedBtn" onclick="deleteSelectedAccounts()" disabled>
+	                                    <span>🗑️</span>
+	                                    删除已选
+	                                </button>
+	                            </div>
 	                        </div>
 
                         <div id="accountsList" class="account-list">
@@ -2052,32 +2114,101 @@
         </div>
     </div>
 
-    <!-- 标签管理模态框 -->
-    <div id="tagsModal" class="modal">
-        <div class="modal-content" style="max-width: 500px;">
-            <div class="modal-header">
-                <h3>管理账户标签</h3>
-                <span class="close" onclick="closeTagsModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="currentTags">当前标签</label>
-                    <div id="currentTagsList" class="tags-list"></div>
-                </div>
-                <div class="form-group">
-                    <label for="newTag">添加新标签</label>
-                    <div class="input-group">
-                        <input type="text" id="newTag" class="form-control" placeholder="输入标签名称">
-                        <button class="btn btn-primary" onclick="addTag()">添加</button>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeTagsModal()">取消</button>
-                <button class="btn btn-primary" onclick="saveAccountTags()">保存</button>
-            </div>
-        </div>
-    </div>
+	    <!-- 标签管理模态框 -->
+	    <div id="tagsModal" class="modal">
+	        <div class="modal-content" style="max-width: 500px;">
+	            <div class="modal-header">
+	                <h3>管理账户标签</h3>
+	                <span class="close" onclick="closeTagsModal()">&times;</span>
+	            </div>
+	            <div class="modal-body">
+	                <div class="form-group">
+	                    <label for="currentTags">当前标签</label>
+	                    <div id="currentTagsList" class="tags-list"></div>
+	                </div>
+	                <div class="form-group">
+	                    <label for="existingTagSelect">从标签库添加</label>
+	                    <div class="tag-suggestion-row">
+	                        <select id="existingTagSelect" class="form-control"></select>
+	                        <button class="btn btn-secondary" onclick="addExistingTagToCurrent()">添加</button>
+	                    </div>
+	                    <p class="text-xs" style="color: #64748b; margin-top: 6px;">建议列表来自全局标签库（/tags）</p>
+	                </div>
+	                <div class="form-group">
+	                    <label for="newTag">添加新标签</label>
+	                    <div class="input-group">
+	                        <input type="text" id="newTag" class="form-control" placeholder="输入标签名称" list="tagSuggestions">
+	                        <button class="btn btn-primary" onclick="addTag()">添加</button>
+	                    </div>
+	                </div>
+	                <datalist id="tagSuggestions"></datalist>
+	            </div>
+	            <div class="modal-footer">
+	                <button class="btn btn-secondary" onclick="closeTagsModal()">取消</button>
+	                <button class="btn btn-primary" onclick="saveAccountTags()">保存</button>
+	            </div>
+	        </div>
+	    </div>
+
+	    <!-- 标签库模态框 -->
+	    <div id="tagLibraryModal" class="modal">
+	        <div class="modal-content" style="max-width: 650px;">
+	            <div class="modal-header">
+	                <h3>标签库</h3>
+	                <button class="modal-close" onclick="closeTagLibraryModal()">&times;</button>
+	            </div>
+	            <div class="modal-body">
+	                <div class="form-group">
+	                    <label>已有标签</label>
+	                    <div id="tagLibraryList" class="tags-list"></div>
+	                    <div id="tagLibraryEmpty" class="tag-library-empty" style="display:none;">暂无标签</div>
+	                </div>
+	                <div class="form-group">
+	                    <label for="tagLibraryNewTag">创建新标签</label>
+	                    <div class="input-group">
+	                        <input type="text" id="tagLibraryNewTag" class="form-control" placeholder="输入标签名称" list="tagSuggestions">
+	                        <button class="btn btn-primary" onclick="createTagFromLibraryInput()">创建</button>
+	                    </div>
+	                </div>
+	            </div>
+	            <div class="modal-footer">
+	                <button class="btn btn-secondary" onclick="closeTagLibraryModal()">关闭</button>
+	            </div>
+	        </div>
+	    </div>
+
+	    <!-- 批量添加标签模态框 -->
+	    <div id="bulkTagsModal" class="modal">
+	        <div class="modal-content" style="max-width: 650px;">
+	            <div class="modal-header">
+	                <h3>批量添加标签</h3>
+	                <button class="modal-close" onclick="closeBulkAddTagsModal()">&times;</button>
+	            </div>
+	            <div class="modal-body">
+	                <div class="form-group">
+	                    <label>选择要添加的标签（可多选）</label>
+	                    <div id="bulkTagsList" class="bulk-tags-list"></div>
+	                    <div id="bulkTagsEmpty" class="tag-library-empty" style="display:none;">标签库为空，请先创建标签</div>
+	                </div>
+	                <div class="form-group">
+	                    <label for="bulkNewTag">输入新标签（可创建）</label>
+	                    <div class="input-group">
+	                        <input type="text" id="bulkNewTag" class="form-control" placeholder="输入标签名称" list="tagSuggestions">
+	                        <button class="btn btn-secondary" onclick="addBulkNewTag()">添加到本次</button>
+	                    </div>
+	                    <p class="text-xs" style="color: #64748b; margin-top: 6px;">新标签会写入标签库（/tags），并加入到已选邮箱</p>
+	                </div>
+	                <div class="form-group">
+	                    <label>本次将添加</label>
+	                    <div id="bulkSelectedTagsPreview" class="tags-list"></div>
+	                </div>
+	            </div>
+	            <div class="modal-footer">
+	                <button class="btn btn-secondary" onclick="closeBulkAddTagsModal()">取消</button>
+	                <button class="btn btn-primary" onclick="applyBulkAddTags()">应用到已选邮箱</button>
+	            </div>
+	        </div>
+	    </div>
 
     <!-- 右键菜单 -->
     <div id="contextMenu" class="context-menu">
@@ -2107,13 +2238,18 @@
 	        let currentEmailFolder = 'all';
 	        let currentEmailPage = 1;
 	        let accounts = [];
-	        let currentPageAccountEmails = [];
-	        let selectedAccountEmails = new Set();
-	        let isUpdatingAccountSelection = false;
-	        let isBulkDeletingAccounts = false;
-        
-        // 账户管理分页相关变量
-        let accountsCurrentPage = 1;
+		        let currentPageAccountEmails = [];
+		        let selectedAccountEmails = new Set();
+		        let isUpdatingAccountSelection = false;
+		        let isBulkDeletingAccounts = false;
+		        let isBulkTaggingAccounts = false;
+		        let tagLibrary = [];
+		        let isTagLibraryLoaded = false;
+		        let isLoadingTagLibrary = false;
+		        let bulkSelectedTags = new Set();
+	        
+	        // 账户管理分页相关变量
+	        let accountsCurrentPage = 1;
         let accountsPageSize = 10;
         let accountsTotalPages = 0;
         let accountsTotalCount = 0;
@@ -2674,27 +2810,41 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 	            }
 	        }
 
-	        function updateAccountsBulkActionsUI() {
-	            const selectAllCheckbox = document.getElementById('selectAllAccounts');
-	            const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+		        function updateAccountsBulkActionsUI() {
+		            const selectAllCheckbox = document.getElementById('selectAllAccounts');
+		            const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+		            const bulkAddTagsBtn = document.getElementById('bulkAddTagsBtn');
 
-	            const selectedCount = selectedAccountEmails.size;
-	            const totalCount = currentPageAccountEmails.length;
+		            const selectedCount = selectedAccountEmails.size;
+		            const totalCount = currentPageAccountEmails.length;
 
 	            if (selectAllCheckbox) {
 	                selectAllCheckbox.checked = totalCount > 0 && selectedCount === totalCount;
 	                selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalCount;
 	            }
 
-	            if (deleteSelectedBtn && !isBulkDeletingAccounts) {
-	                deleteSelectedBtn.disabled = selectedCount === 0;
-	                deleteSelectedBtn.innerHTML = `<span>🗑️</span> 删除已选${selectedCount > 0 ? ` (${selectedCount})` : ''}`;
-	            }
-	        }
+		            if (bulkAddTagsBtn) {
+		                if (isBulkDeletingAccounts || isBulkTaggingAccounts) {
+		                    bulkAddTagsBtn.disabled = true;
+		                } else {
+		                    bulkAddTagsBtn.disabled = selectedCount === 0;
+		                    bulkAddTagsBtn.innerHTML = `<span>🏷️</span> 批量加标签${selectedCount > 0 ? ` (${selectedCount})` : ''}`;
+		                }
+		            }
 
-	        function clearAccountSelection() {
-	            selectedAccountEmails.clear();
-	            isUpdatingAccountSelection = true;
+		            if (deleteSelectedBtn) {
+		                if (isBulkDeletingAccounts || isBulkTaggingAccounts) {
+		                    deleteSelectedBtn.disabled = true;
+		                } else {
+		                    deleteSelectedBtn.disabled = selectedCount === 0;
+		                    deleteSelectedBtn.innerHTML = `<span>🗑️</span> 删除已选${selectedCount > 0 ? ` (${selectedCount})` : ''}`;
+		                }
+		            }
+		        }
+
+		        function clearAccountSelection() {
+		            selectedAccountEmails.clear();
+		            isUpdatingAccountSelection = true;
 	            document.querySelectorAll('#accountsList .account-select').forEach(cb => {
 	                cb.checked = false;
 	            });
@@ -2728,8 +2878,8 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 	            updateAccountsBulkActionsUI();
 	        }
 
-	        async function deleteSelectedAccounts() {
-	            if (isBulkDeletingAccounts) return;
+		        async function deleteSelectedAccounts() {
+		            if (isBulkDeletingAccounts) return;
 
 	            const emailIds = Array.from(selectedAccountEmails);
 	            if (emailIds.length === 0) return;
@@ -2741,11 +2891,12 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 	            const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
 	            const originalBtnHtml = deleteSelectedBtn ? deleteSelectedBtn.innerHTML : '';
 
-	            isBulkDeletingAccounts = true;
-	            if (deleteSelectedBtn) {
-	                deleteSelectedBtn.disabled = true;
-	                deleteSelectedBtn.innerHTML = '<span>⏳</span> 删除中...';
-	            }
+		            isBulkDeletingAccounts = true;
+		            if (deleteSelectedBtn) {
+		                deleteSelectedBtn.disabled = true;
+		                deleteSelectedBtn.innerHTML = '<span>⏳</span> 删除中...';
+		            }
+		            updateAccountsBulkActionsUI();
 
 	            const failed = [];
 	            let succeeded = 0;
@@ -2779,16 +2930,345 @@ user2@outlook.com----pass2----87654321-4321-4321-4321-210987654321----0.AXoAQwRL
 	                showNotification(`删除完成：成功 ${succeeded}，失败 ${failed.length}。失败示例：${failedPreview}${more}`, 'warning', '', 8000);
 	            }
 
-	            isBulkDeletingAccounts = false;
-	            if (deleteSelectedBtn) {
-	                deleteSelectedBtn.innerHTML = originalBtnHtml || '<span>🗑️</span> 删除已选';
-	            }
-	            updateAccountsBulkActionsUI();
-	        }
+		            isBulkDeletingAccounts = false;
+		            if (deleteSelectedBtn) {
+		                deleteSelectedBtn.innerHTML = originalBtnHtml || '<span>🗑️</span> 删除已选';
+		            }
+		            updateAccountsBulkActionsUI();
+		        }
 
-		        async function loadAccounts(page = 1, resetSearch = false) {
-	            if (resetSearch) {
-	                // 重置搜索条件
+		        function normalizeTagInput(tag) {
+		            return (tag || '').trim();
+		        }
+
+		        function uniqueTags(tags) {
+		            const seen = new Set();
+		            const result = [];
+		            (Array.isArray(tags) ? tags : []).forEach(t => {
+		                const normalized = normalizeTagInput(t);
+		                if (!normalized) return;
+		                if (seen.has(normalized)) return;
+		                seen.add(normalized);
+		                result.push(normalized);
+		            });
+		            return result;
+		        }
+
+		        function getTagsFromTagsApiResponse(data) {
+		            if (!data) return [];
+		            if (Array.isArray(data)) return data;
+		            if (Array.isArray(data.tags)) return data.tags;
+		            return [];
+		        }
+
+		        async function loadTagLibrary(force = false) {
+		            if (isLoadingTagLibrary) return tagLibrary;
+		            if (isTagLibraryLoaded && !force) return tagLibrary;
+
+		            isLoadingTagLibrary = true;
+		            try {
+		                const data = await apiRequest('/tags');
+		                tagLibrary = uniqueTags(getTagsFromTagsApiResponse(data));
+		                isTagLibraryLoaded = true;
+		                updateTagSuggestionSources();
+		                return tagLibrary;
+		            } finally {
+		                isLoadingTagLibrary = false;
+		            }
+		        }
+
+		        function updateTagSuggestionSources() {
+		            const datalist = document.getElementById('tagSuggestions');
+		            if (datalist) {
+		                datalist.innerHTML = tagLibrary.map(tag => `<option value="${tag}"></option>`).join('');
+		            }
+
+		            updateAccountExistingTagSelect();
+		            renderTagLibraryModalList();
+		            renderBulkTagsModalList();
+		            renderBulkSelectedTagsPreview();
+		        }
+
+		        function updateAccountExistingTagSelect() {
+		            const select = document.getElementById('existingTagSelect');
+		            if (!select) return;
+
+		            const available = tagLibrary.filter(tag => !currentEditTags.includes(tag));
+		            if (available.length === 0) {
+		                select.innerHTML = '<option value="" disabled selected>暂无可用标签</option>';
+		                select.disabled = true;
+		                return;
+		            }
+
+		            select.disabled = false;
+		            select.innerHTML = available.map(tag => `<option value="${tag}">${tag}</option>`).join('');
+		        }
+
+		        async function openTagLibraryModal() {
+		            await loadTagLibrary();
+		            renderTagLibraryModalList();
+		            document.getElementById('tagLibraryModal').style.display = 'flex';
+		        }
+
+		        function closeTagLibraryModal() {
+		            document.getElementById('tagLibraryModal').style.display = 'none';
+		            const input = document.getElementById('tagLibraryNewTag');
+		            if (input) input.value = '';
+		        }
+
+		        function renderTagLibraryModalList() {
+		            const list = document.getElementById('tagLibraryList');
+		            const empty = document.getElementById('tagLibraryEmpty');
+		            if (!list || !empty) return;
+
+		            if (!tagLibrary || tagLibrary.length === 0) {
+		                list.innerHTML = '';
+		                empty.style.display = 'block';
+		                return;
+		            }
+
+		            empty.style.display = 'none';
+		            list.innerHTML = tagLibrary.map(tag => `
+		                <div class="tag-item">
+		                    <span class="tag-name">${tag}</span>
+		                    <button class="tag-delete" onclick="deleteTagFromLibrary('${tag}')">×</button>
+		                </div>
+		            `).join('');
+		        }
+
+		        async function createTagFromLibraryInput() {
+		            const input = document.getElementById('tagLibraryNewTag');
+		            const tag = normalizeTagInput(input ? input.value : '');
+		            if (!tag) {
+		                showNotification('标签名称不能为空', 'warning');
+		                return;
+		            }
+		            await createTagInLibrary(tag);
+		            if (input) input.value = '';
+		        }
+
+		        async function createTagInLibrary(tag) {
+		            const normalized = normalizeTagInput(tag);
+		            if (!normalized) return;
+
+		            try {
+		                const data = await apiRequest('/tags', {
+		                    method: 'POST',
+		                    body: JSON.stringify({ tag: normalized })
+		                });
+		                tagLibrary = uniqueTags(getTagsFromTagsApiResponse(data));
+		                isTagLibraryLoaded = true;
+		                updateTagSuggestionSources();
+		                showSuccess('标签已创建');
+		            } catch (error) {
+		                showError('创建标签失败: ' + error.message);
+		            }
+		        }
+
+		        async function deleteTagFromLibrary(tag) {
+		            const normalized = normalizeTagInput(tag);
+		            if (!normalized) return;
+
+		            if (!confirm(`确定要删除标签 "${normalized}" 吗？\\n\\n删除后会从所有账户中移除该标签。`)) {
+		                return;
+		            }
+
+		            try {
+		                const data = await apiRequest(`/tags/${encodeURIComponent(normalized)}`, { method: 'DELETE' });
+		                tagLibrary = uniqueTags(getTagsFromTagsApiResponse(data));
+		                isTagLibraryLoaded = true;
+		                updateTagSuggestionSources();
+		                showSuccess('标签已删除');
+		                // 后端会从所有账户移除该标签，这里刷新列表以同步展示
+		                loadAccounts(accountsCurrentPage);
+		            } catch (error) {
+		                showError('删除标签失败: ' + error.message);
+		            }
+		        }
+
+		        async function addTagIfMissingInLibrary(tag) {
+		            const normalized = normalizeTagInput(tag);
+		            if (!normalized) return;
+		            await loadTagLibrary();
+		            if (tagLibrary.includes(normalized)) return;
+		            await createTagInLibrary(normalized);
+		        }
+
+		        async function addExistingTagToCurrent() {
+		            const select = document.getElementById('existingTagSelect');
+		            const selected = normalizeTagInput(select ? select.value : '');
+		            if (!selected) return;
+
+		            if (currentEditTags.includes(selected)) {
+		                showNotification('标签已存在', 'warning');
+		                return;
+		            }
+
+		            currentEditTags.push(selected);
+		            renderCurrentTags();
+		        }
+
+		        async function openBulkAddTagsModal() {
+		            if (selectedAccountEmails.size === 0) return;
+		            bulkSelectedTags.clear();
+		            await loadTagLibrary();
+		            renderBulkTagsModalList();
+		            renderBulkSelectedTagsPreview();
+		            document.getElementById('bulkTagsModal').style.display = 'flex';
+		        }
+
+		        function closeBulkAddTagsModal() {
+		            document.getElementById('bulkTagsModal').style.display = 'none';
+		            const input = document.getElementById('bulkNewTag');
+		            if (input) input.value = '';
+		            bulkSelectedTags.clear();
+		            renderBulkSelectedTagsPreview();
+		        }
+
+		        function renderBulkTagsModalList() {
+		            const list = document.getElementById('bulkTagsList');
+		            const empty = document.getElementById('bulkTagsEmpty');
+		            if (!list || !empty) return;
+
+		            if (!tagLibrary || tagLibrary.length === 0) {
+		                list.innerHTML = '';
+		                empty.style.display = 'block';
+		                return;
+		            }
+
+		            empty.style.display = 'none';
+		            list.innerHTML = tagLibrary.map(tag => `
+		                <label class="bulk-tag-option">
+		                    <input type="checkbox" ${bulkSelectedTags.has(tag) ? 'checked' : ''} onchange="toggleBulkTagSelection('${tag}', this.checked)">
+		                    <span>${tag}</span>
+		                </label>
+		            `).join('');
+		        }
+
+		        function toggleBulkTagSelection(tag, checked) {
+		            const normalized = normalizeTagInput(tag);
+		            if (!normalized) return;
+		            if (checked) bulkSelectedTags.add(normalized);
+		            else bulkSelectedTags.delete(normalized);
+		            renderBulkSelectedTagsPreview();
+		        }
+
+		        function renderBulkSelectedTagsPreview() {
+		            const container = document.getElementById('bulkSelectedTagsPreview');
+		            if (!container) return;
+
+		            const tags = Array.from(bulkSelectedTags);
+		            if (tags.length === 0) {
+		                container.innerHTML = '<p class="text-muted">未选择标签</p>';
+		                return;
+		            }
+
+		            container.innerHTML = tags.map(tag => `
+		                <div class="tag-item">
+		                    <span class="tag-name">${tag}</span>
+		                    <button class="tag-delete" onclick="removeBulkSelectedTag('${tag}')">×</button>
+		                </div>
+		            `).join('');
+		        }
+
+		        function removeBulkSelectedTag(tag) {
+		            bulkSelectedTags.delete(normalizeTagInput(tag));
+		            renderBulkTagsModalList();
+		            renderBulkSelectedTagsPreview();
+		        }
+
+		        async function addBulkNewTag() {
+		            const input = document.getElementById('bulkNewTag');
+		            const tag = normalizeTagInput(input ? input.value : '');
+		            if (!tag) {
+		                showNotification('标签名称不能为空', 'warning');
+		                return;
+		            }
+
+		            await addTagIfMissingInLibrary(tag);
+		            bulkSelectedTags.add(tag);
+
+		            if (input) input.value = '';
+		            renderBulkTagsModalList();
+		            renderBulkSelectedTagsPreview();
+		        }
+
+		        async function applyBulkAddTags() {
+		            if (isBulkTaggingAccounts) return;
+
+		            const emailIds = Array.from(selectedAccountEmails);
+		            const tagsToAdd = Array.from(bulkSelectedTags);
+
+		            if (emailIds.length === 0) {
+		                showNotification('请先选择邮箱账户', 'warning');
+		                return;
+		            }
+
+		            if (tagsToAdd.length === 0) {
+		                showNotification('请先选择要添加的标签', 'warning');
+		                return;
+		            }
+
+		            const confirmed = confirm(`确定要为 ${emailIds.length} 个账户添加 ${tagsToAdd.length} 个标签吗？`);
+		            if (!confirmed) return;
+
+		            isBulkTaggingAccounts = true;
+		            updateAccountsBulkActionsUI();
+
+		            const applyBtn = document.querySelector('#bulkTagsModal .modal-footer .btn.btn-primary');
+		            const originalApplyText = applyBtn ? applyBtn.textContent : '';
+		            if (applyBtn) {
+		                applyBtn.disabled = true;
+		                applyBtn.textContent = '应用中...';
+		            }
+
+		            const failed = [];
+		            let succeeded = 0;
+
+		            for (const emailId of emailIds) {
+		                const account = accounts.find(acc => acc.email_id === emailId);
+		                const existing = Array.isArray(account?.tags) ? account.tags : [];
+		                const merged = uniqueTags([...existing, ...tagsToAdd]);
+
+		                try {
+		                    await apiRequest(`/accounts/${encodeURIComponent(emailId)}/tags`, {
+		                        method: 'PUT',
+		                        body: JSON.stringify({ tags: merged })
+		                    });
+		                    succeeded++;
+		                } catch (error) {
+		                    failed.push({
+		                        emailId,
+		                        message: error?.message || String(error)
+		                    });
+		                }
+		            }
+
+		            isBulkTaggingAccounts = false;
+		            if (applyBtn) {
+		                applyBtn.disabled = false;
+		                applyBtn.textContent = originalApplyText || '应用到已选邮箱';
+		            }
+
+		            closeBulkAddTagsModal();
+		            selectedAccountEmails.clear();
+		            updateAccountsBulkActionsUI();
+
+		            try { await loadTagLibrary(true); } catch {}
+		            try { await loadAccounts(accountsCurrentPage); } catch {}
+
+		            if (failed.length === 0) {
+		                showSuccess(`已为 ${succeeded} 个账户添加标签`);
+		            } else {
+		                const failedPreview = failed.slice(0, 3).map(f => `${f.emailId}: ${f.message}`).join('; ');
+		                const more = failed.length > 3 ? `；另有 ${failed.length - 3} 个失败` : '';
+		                showNotification(`批量添加完成：成功 ${succeeded}，失败 ${failed.length}。失败示例：${failedPreview}${more}`, 'warning', '', 8000);
+		            }
+		        }
+
+			        async function loadAccounts(page = 1, resetSearch = false) {
+		            if (resetSearch) {
+		                // 重置搜索条件
 	                currentEmailSearch = '';
                 currentTagSearch = '';
                 document.getElementById('emailSearch').value = '';
@@ -3724,47 +4204,51 @@ GET /emails/{email_id}/{message_id}
             loadEmails();
         }
 
-        // 打开标签管理模态框
-        function editAccountTags(emailId, tags) {
-            currentEditAccount = emailId;
-            currentEditTags = Array.isArray(tags) ? [...tags] : [];
-            
-            // 更新模态框标题
-            document.querySelector('#tagsModal .modal-header h3').textContent = `管理 ${emailId} 的标签`;
-            
-            // 显示当前标签
-            renderCurrentTags();
-            
-            // 显示模态框
-            document.getElementById('tagsModal').style.display = 'flex';
-        }
+	        // 打开标签管理模态框
+	        async function editAccountTags(emailId, tags) {
+	            currentEditAccount = emailId;
+	            currentEditTags = Array.isArray(tags) ? [...tags] : [];
+	            
+	            // 更新模态框标题
+	            document.querySelector('#tagsModal .modal-header h3').textContent = `管理 ${emailId} 的标签`;
+	            
+	            // 显示当前标签
+	            renderCurrentTags();
+	            await loadTagLibrary();
+	            updateAccountExistingTagSelect();
+	            
+	            // 显示模态框
+	            document.getElementById('tagsModal').style.display = 'flex';
+	        }
 
         // 渲染当前标签列表
-        function renderCurrentTags() {
-            const tagsList = document.getElementById('currentTagsList');
-            
-            if (currentEditTags.length === 0) {
-                tagsList.innerHTML = '<p class="text-muted">暂无标签</p>';
-                return;
-            }
-            
-            tagsList.innerHTML = currentEditTags.map(tag => `
-                <div class="tag-item">
-                    <span class="tag-name">${tag}</span>
-                    <button class="tag-delete" onclick="removeTag('${tag}')">×</button>
-                </div>
-            `).join('');
-        }
+	        function renderCurrentTags() {
+	            const tagsList = document.getElementById('currentTagsList');
+	            
+	            if (currentEditTags.length === 0) {
+	                tagsList.innerHTML = '<p class="text-muted">暂无标签</p>';
+	                updateAccountExistingTagSelect();
+	                return;
+	            }
+	            
+	            tagsList.innerHTML = currentEditTags.map(tag => `
+	                <div class="tag-item">
+	                    <span class="tag-name">${tag}</span>
+	                    <button class="tag-delete" onclick="removeTag('${tag}')">×</button>
+	                </div>
+	            `).join('');
+	            updateAccountExistingTagSelect();
+	        }
 
-        // 添加新标签
-        function addTag() {
-            const newTagInput = document.getElementById('newTag');
-            const newTag = newTagInput.value.trim();
-            
-            if (!newTag) {
-                showNotification('标签名称不能为空', 'warning');
-                return;
-            }
+	        // 添加新标签
+	        async function addTag() {
+	            const newTagInput = document.getElementById('newTag');
+	            const newTag = newTagInput.value.trim();
+	            
+	            if (!newTag) {
+	                showNotification('标签名称不能为空', 'warning');
+	                return;
+	            }
             
             // 检查标签是否已存在
             if (currentEditTags.includes(newTag)) {
@@ -3772,15 +4256,17 @@ GET /emails/{email_id}/{message_id}
                 return;
             }
             
-            // 添加新标签
-            currentEditTags.push(newTag);
-            
-            // 清空输入框
-            newTagInput.value = '';
-            
-            // 重新渲染标签列表
-            renderCurrentTags();
-        }
+	            await addTagIfMissingInLibrary(newTag);
+
+	            // 添加新标签
+	            currentEditTags.push(newTag);
+	            
+	            // 清空输入框
+	            newTagInput.value = '';
+	            
+	            // 重新渲染标签列表
+	            renderCurrentTags();
+	        }
 
         // 删除标签
         function removeTag(tag) {
@@ -3789,18 +4275,20 @@ GET /emails/{email_id}/{message_id}
         }
 
         // 关闭标签管理模态框
-        function closeTagsModal() {
-            document.getElementById('tagsModal').style.display = 'none';
-            currentEditAccount = null;
-            currentEditTags = [];
-        }
+	        function closeTagsModal() {
+	            document.getElementById('tagsModal').style.display = 'none';
+	            const newTagInput = document.getElementById('newTag');
+	            if (newTagInput) newTagInput.value = '';
+	            currentEditAccount = null;
+	            currentEditTags = [];
+	        }
 
         // 保存账户标签
-        async function saveAccountTags() {
-            if (!currentEditAccount) {
-                closeTagsModal();
-                return;
-            }
+	        async function saveAccountTags() {
+	            if (!currentEditAccount) {
+	                closeTagsModal();
+	                return;
+	            }
             
             try {
                 const response = await apiRequest(`/accounts/${currentEditAccount}/tags`, {
@@ -3808,13 +4296,14 @@ GET /emails/{email_id}/{message_id}
                     body: JSON.stringify({ tags: currentEditTags })
                 });
                 
-                showSuccess('标签更新成功');
-                closeTagsModal();
-                
-                // 重新加载账户列表
-                loadAccounts();
-            } catch (error) {
-                showError('更新标签失败: ' + error.message);
+	                showSuccess('标签更新成功');
+	                closeTagsModal();
+	                loadTagLibrary(true);
+	                
+	                // 重新加载账户列表
+	                loadAccounts();
+	            } catch (error) {
+	                showError('更新标签失败: ' + error.message);
             }
         }
 
